@@ -1,0 +1,82 @@
+#!/usr/bin/env java --source 22 -ea --enable-preview
+
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
+
+import static java.lang.reflect.Modifier.isPublic;
+import static java.lang.reflect.Modifier.isStatic;
+
+public class Main {
+    public static void main(String... args) throws Exception {
+        try (var classLoader = new DependencyLoader(
+                new BuildTargetDependency(),
+                new MavenDependency("org.apache.commons:commons-math3:3.6.1"))) {
+            classLoader.runMain("lib.Lib", args);
+        }
+    }
+
+    private static final String MVN_REPO = System.getProperty("user.home") + "/.m2/repository";
+
+    public sealed interface Dependency {
+        URL toUrl();
+
+        default URL toUrl(Path path) {
+            try {
+                return path.toUri().toURL();
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    public record BuildTargetDependency(Path path) implements Dependency {
+        public BuildTargetDependency() {this(".");}
+
+        public BuildTargetDependency(String lib) {this(Paths.get(lib));}
+
+        public BuildTargetDependency(Path path) {this.path = path.resolve("target/classes");}
+
+        @Override public URL toUrl() {return toUrl(path);}
+    }
+
+    public record MavenDependency(
+            String groupId,
+            String artifactId,
+            String version,
+            String type
+            // TODO classifier
+    ) implements Dependency {
+        public MavenDependency(String coordinates) {
+            var split = coordinates.split(":");
+            assert split.length >= 3 : "need least GAV in Maven coordinates, but got: " + coordinates;
+            this(
+                    split[0],
+                    split[1],
+                    split[2],
+                    split.length > 3 ? split[3] : "jar");
+        }
+
+        @Override public URL toUrl() {
+            return toUrl(Paths.get(MVN_REPO + "/" + groupId.replace('.', '/') + "/" + artifactId + "/" + version + "/" + artifactId + "-" + version + "." + type));
+        }
+    }
+
+    public static class DependencyLoader extends URLClassLoader {
+        public DependencyLoader(Dependency... dependencies) {
+            super(Stream.of(dependencies).map(Dependency::toUrl).toArray(URL[]::new));
+        }
+
+        public void runMain(String className, String... args) throws Exception {
+            var mainClass = Class.forName(className, true, this);
+            var main = mainClass.getDeclaredMethod("main", String[].class);
+            assert isStatic(main.getModifiers()) : "main method must be static";
+            assert isPublic(main.getModifiers()) : "main method must be public";
+
+            main.invoke(null, new Object[]{args});
+        }
+    }
+}

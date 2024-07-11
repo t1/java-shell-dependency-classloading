@@ -1,0 +1,27 @@
+= Load Maven dependencies at runtime
+
+`run` is a shebang script written in Java that loads Maven dependencies at runtime.
+It uses a custom class loader to load dependencies from the local Maven repository or a build target directory.
+
+To see it in action, run the following command (assuming you have Maven and Java 22 installed):
+
+[source,bash]
+----
+mvn dependency:get -Dartifact=org.apache.commons:commons-math3:3.6.1 # only once to download the lib
+mvn # only once to compile the demo Lib class
+./run foo bar
+----
+
+This will print `Hello, 120! [foo, bar]`.
+The string comes from the `Lib` class, while the arguments echo what you have passed to the script, and the 120 is the result of the `factorial(5)` method from the `Apache Math 3` library jar.
+
+== Deficiencies
+
+The script is mainly a proof of concept and not for serious use.
+It has the following major deficiencies:
+
+* It does not download dependencies.
+* It does not handle transitive dependencies.
+* There is no mechanism to update itself; you'll have to copy and update it manually.
+
+If you need a more robust solution, consider using https://www.jbang.dev[JBang].
